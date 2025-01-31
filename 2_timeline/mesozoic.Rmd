@@ -1,0 +1,210 @@
+---
+title: "cenozoic"
+output:
+  html_document:
+  theme: paper
+highlight: kate
+editor_options:
+  chunk_output_type: console
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+```
+
+```{r prep, message=FALSE}
+## packages
+library(tidyverse)
+library(lubridate)
+library(ggrepel)
+library(showtext)
+library(patchwork)
+
+## ggplot theme updates
+source("../tidy_grey.R")
+theme_update(line = element_blank(),
+             rect = element_rect(fill = "#f7f5ee", color = "transparent"),
+             panel.border = element_blank(),
+             axis.text = element_blank(),
+             plot.title = element_text(color = "black", hjust = 0.5, size = 30),
+             plot.subtitle = element_text(color = "grey30", hjust = 0.5, 
+                                          size = 8, margin = margin(0, 0, 0, 0)),
+             plot.caption = element_text(color = "grey30", size = 8))
+
+## add fonts via showtext
+font_add_google("Cinzel", "Cinzel")
+showtext_auto()
+```
+
+
+```{r cenozoic}
+# Function to format numbers with negative support
+format_numbers <- function(x) {
+  sapply(x, function(n) {
+    if (abs(n) >= 1e6) {
+      paste0(sign(n) * abs(n) / 1e6, "m")
+    } else if (abs(n) >= 1e3) {
+      paste0(sign(n) * abs(n) / 1e3, "k")
+    } else {
+      as.character(n)
+    }
+  })
+}
+
+cenozoic <- read.csv("../data/cenozoic_extinction.csv")
+
+cenozoic$extinction <- -1*cenozoic$extinction + 2000
+
+cenozoic <- cenozoic %>%
+  mutate(Epoch = case_when(
+    extinction > -10000 ~ "Holocene",
+    extinction > -2580000  ~ "Pleistocene ",
+    extinction > -5330000 ~ "Pliocene",
+    extinction > -23030000 ~ "Miocene",
+    extinction > -33900000 ~ "Oligocene",
+    extinction > -56000000 ~ "Eocene",
+    extinction > -66000000 ~ "Paleocene"
+  ))
+
+period_height = 2.3
+# Count the frequency of each name
+name_counts <- table(cenozoic$Additional.Info)
+sorted_names <- sort(name_counts, decreasing = TRUE)
+top_names <- names(sorted_names)[1:5]
+
+cenozoic$Additional.Info <- ifelse(cenozoic$Additional.Info %in% top_names, cenozoic$Additional.Info, "other")
+
+legend <- tibble(
+  x = c(1, 0.85, 0.7, 0.55, 0.4, 0.25),
+  text = unique(cenozoic$Additional.Info)
+)
+
+```
+
+```{r split1}
+p1 <- cenozoic %>% filter(extinction >= -60000)
+
+labs_yrs <- tibble(time = c(seq(-60000, -20000, by = 20000), -10000, -5000, 1, 2000)) %>% 
+  mutate(
+    mk = format_numbers(time),
+    jesus = ifelse(time < 0, "BC", "AD"),
+    lab = glue::glue("{mk} {jesus}")
+  )
+
+p1 <- p1 %>% arrange(extinction)
+```
+
+```{r plot2}
+
+g1 <- ggplot(data = p1, aes(x = 1.6, y = extinction)) + 
+    geom_segment(data = labs_yrs, aes(x = 1.6, xend = 1.8, y = time, yend = time), linewidth = 0.5, color = "grey30") +
+    geom_segment(x = 1.6, xend = 1.6, y = -61000, yend = 2500, lineend = "round", linewidth = 2.5, color = "grey30") +
+    annotate(geom = "rect", xmin = 1.610, xmax = period_height, ymin = -61000, ymax = -10000, fill = "#20639b", colour = "transparent", alpha = 0.3) +
+    annotate(geom = "rect", xmin = 1.610, xmax = period_height, ymin = -10000, ymax = 2500, fill = "grey50", colour = "transparent", alpha = 0.3) +
+    geom_text_repel(data = p1, aes(label = scientific, color = Additional.Info), segment.color = "grey60",
+                    segment.size = 0.1, family = "Cinzel", fontface = "bold",
+                    size = 3.8, xlim  = c(0, 1.1), hjust = 1, angle = 45, max.overlaps = 12) +
+    geom_point(color = "transparent", fill = "white", size = 5, shape = 21) +
+    geom_point(color = "grey30", fill = alpha("grey10", 0.1), size = 5, shape = 21) +
+    geom_text(data = labs_yrs, aes(x = 1.72, y = time, label = lab), 
+              family = "Cinzel", hjust = 0, color = "grey30", vjust = -1, size = 6) + 
+    geom_text(data = legend, aes(x = x, y = -57000, label = text, color = text), family = "Cinzel", hjust = 0.5, size = 5, fontface = 'bold') + 
+    scale_x_continuous(limits = c(0, 2.3)) +
+    scale_color_manual(values = c("grey50", "#E07B39", "#b22222", "#6d2a1b", "#D72638", "#D4A017"), guide = 'none') +
+    theme(plot.title = element_text(family = "Cinzel"),
+          plot.subtitle = element_text(family = "Cinzel")) +
+    labs(x = NULL, y = NULL, title = "Cenozoic Period",
+         subtitle = "\nTimeline of Famous Cenozoic Species: their last appearance and family group\n Extinction times are not accurate.") +
+    theme(plot.title = element_text(size = 28), plot.subtitle = element_text(size = 15)) +
+    coord_flip() 
+```
+
+```{r split2}
+p1 <- cenozoic %>% filter(extinction >= -30000000 & extinction <= -60000)
+
+labs_yrs <- tibble(time = c(-30000000, -23030000, -5330000, -2580000, 1)) %>% 
+  mutate(
+    mk = format_numbers(time),
+    jesus = ifelse(time < 0, "BC", "AD"),
+    lab = glue::glue("{mk} {jesus}")
+  )
+
+p1 <- p1 %>% arrange(extinction)
+```
+
+```{r plot2}
+
+g2 <- ggplot(data = p1, aes(x = 1.6, y = extinction)) + 
+    geom_segment(data = labs_yrs, aes(x = 1.6, xend = 1.8, y = time, yend = time), linewidth = 0.5, color = "grey30") +
+    geom_segment(x = 1.6, xend = 1.6, y = -30100000, yend = 100000, lineend = "round", linewidth = 2.5, color = "grey30") +
+    annotate(geom = "rect", xmin = 1.610, xmax = period_height, ymin = -30100000, ymax = -23030000, fill = "#f6d55c", colour = "transparent", alpha = 0.3) +
+    annotate(geom = "rect", xmin = 1.610, xmax = period_height, ymin = -23030000, ymax = -5330000, fill = "#f79d84", colour = "transparent", alpha = 0.3) +
+    annotate(geom = "rect", xmin = 1.610, xmax = period_height, ymin = -5330000, ymax = -2580000, fill = "#3caea3", colour = "transparent", alpha = 0.3) +
+    annotate(geom = "rect", xmin = 1.610, xmax = period_height, ymin = -2580000, ymax = -10000, fill = "#20639b", colour = "transparent", alpha = 0.3) +
+    annotate(geom = "rect", xmin = 1.610, xmax = period_height, ymin = -10000, ymax = 100000, fill = "grey50", colour = "transparent", alpha = 0.3) +
+    geom_text_repel(data = p1, aes(label = scientific, color = Additional.Info), segment.color = "grey60",
+                    segment.size = 0.1, family = "Cinzel", fontface = "bold",
+                    size = 3.8, xlim  = c(0, 1.1), hjust = 1, angle = 45, max.overlaps = 12) +
+    geom_point(color = "transparent", fill = "white", size = 5, shape = 21) +
+    geom_point(color = "grey30", fill = alpha("grey10", 0.1), size = 5, shape = 21) +
+    geom_text(data = labs_yrs, aes(x = 1.72, y = time, label = lab), 
+              family = "Cinzel", hjust = 0, color = "grey30", vjust = -1, size = 6) + 
+    scale_x_continuous(limits = c(0, 2.3)) +
+    scale_color_manual(values = c("grey50", "#E07B39", "#b22222", "#6d2a1b", "#D72638", "#D4A017"), guide = 'none') +
+    theme(plot.title = element_text(family = "Cinzel"),
+          plot.subtitle = element_text(family = "Cinzel"),
+          legend.position = "none") +
+    labs(x = NULL, y = NULL) +
+    coord_flip() 
+g2
+```
+  
+```{r split3}
+p1 <- cenozoic %>% filter(extinction >= -66000000 & extinction < -30000000)
+
+labs_yrs <- tibble(time = c(-66000000, -56000000, -40000000, -33900000)) %>% 
+  mutate(
+    mk = format_numbers(time),
+    jesus = ifelse(time < 0, "BC", "AD"),
+    lab = glue::glue("{mk} {jesus}")
+  )
+
+p1 <- p1 %>% arrange(extinction)
+```
+
+```{r plot2}
+
+g3 <- ggplot(data = p1, aes(x = 1.6, y = extinction)) + 
+    geom_segment(data = labs_yrs, aes(x = 1.6, xend = 1.8, y = time, yend = time), linewidth = 0.5, color = "grey30") +
+    geom_segment(x = 1.6, xend = 1.6, y = -66100000, yend = -30000000, lineend = "round", linewidth = 2.5, color = "grey30") +
+    annotate(geom = "rect", xmin = 1.610, xmax = period_height, ymin = -66000000, ymax = -56000000, fill = "#822a85", colour = "transparent", alpha = 0.3) +
+    annotate(geom = "rect", xmin = 1.610, xmax = period_height, ymin = -56000000, ymax = -33900000, fill = "#247b3a", colour = "transparent", alpha = 0.3) +
+    annotate(geom = "rect", xmin = 1.610, xmax = period_height, ymin = -33900000, ymax = -30000000, fill = "#f6d55c", colour = "transparent", alpha = 0.3) +
+    geom_text_repel(data = p1, aes(label = scientific, color = Additional.Info), segment.color = "grey60",
+                    segment.size = 0.1, family = "Cinzel", fontface = "bold",
+                    size = 3.8, xlim  = c(0, 1.1), hjust = 1, angle = 45, max.overlaps = 12) +
+    geom_point(color = "transparent", fill = "white", size = 5, shape = 21) +
+    geom_point(color = "grey30", fill = alpha("grey10", 0.1), size = 5, shape = 21) +
+    geom_text(data = labs_yrs, aes(x = 1.72, y = time, label = lab), 
+              family = "Cinzel", hjust = 0, color = "grey30", vjust = -1, size = 6) + 
+    scale_x_continuous(limits = c(0, 2.3)) +
+    scale_color_manual(values = c("grey50", "#E07B39", "#b22222", "#6d2a1b", "#D72638", "#D4A017"), guide = 'none') +
+    theme(plot.title = element_text(family = "Cinzel"),
+          plot.subtitle = element_text(family = "Cinzel"),
+          legend.position = "none") +
+    labs(x = NULL, y = NULL, caption = "\nData: ChatGPT") +
+    theme(plot.caption = element_text(size = 15)) +
+    coord_flip() 
+```
+
+```{r combined}
+g1/g2/g3 + plot_layout(heights = c(1, 1, 1))
+
+ggsave('cenozoicv3.pdf', width = 30, height = 12, device = cairo_pdf)
+ggsave('cenozoicv3.svg', width = 30, height = 12, device = svg)
+ggsave('cenozoicv3.png', width = 30, height = 12, device = png, dpi = 600)
+```
+
+```{r}
+sessionInfo()
+```

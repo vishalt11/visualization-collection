@@ -202,7 +202,7 @@ g1/g2/g3 + plot_layout(heights = c(1, 1, 1))
 
 ggsave('cenozoicv3.pdf', width = 30, height = 12, device = cairo_pdf)
 ggsave('cenozoicv3.svg', width = 30, height = 12, device = svg)
-ggsave('cenozoicv3.png', width = 30, height = 12, device = png, dpi = 600)
+#ggsave('cenozoicv3.png', width = 30, height = 12, device = png, dpi = 600)
 ```
 
 ```{r}

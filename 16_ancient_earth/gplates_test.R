@@ -9,46 +9,54 @@ library(png)
 
 
 
-coastlines <- reconstruct("coastlines", age=65, model="MERDITH2021")
+#coastlines <- reconstruct("coastlines", age=65, model="MERDITH2021")
 
 # the edge of the map (for mollweide)
-edge <- mapedge()
+#edge <- mapedge()
 
 # transform to Robinson 
-epsg <- "ESRI:54030"
-coastsRob <- sf::st_transform(coastlines, crs=epsg)
-edgeRob <- sf::st_transform(edge, crs=epsg)
+#epsg <- "ESRI:54030"
+#coastsRob <- sf::st_transform(coastlines, crs=epsg)
+#edgeRob <- sf::st_transform(edge, crs=epsg)
 
 # plot
-plot(edgeRob, col="#1A6BB0", border="gray30")
-plot(coastsRob, border=NA, col="gray90", add=TRUE)
+#plot(edgeRob, col="#1A6BB0", border="gray30")
+#plot(coastsRob, border=NA, col="gray90", add=TRUE)
 
 
-df <- read_csv('wusa_dino.csv')
+df <- read_csv(
+  "maas_worldwide_ornith.csv",
+  col_select = c(
+    accepted_name, accepted_rank, early_interval, late_interval, max_ma,
+    min_ma, lng, lat, cc, state,
+    county, paleolng, paleolat, occurrence_comments, geology_comments,
+    environment
+  )
+)
 colnames(df)
 
 unique(df$early_interval)
 unique(df$late_interval)
 
-df_s <- df %>% select(accepted_name, accepted_rank, early_interval, late_interval, max_ma, min_ma, lng, lat, 
-                      cc, state, county, paleolng, paleolat, occurrence_comments, geology_comments, environment)
-
-
+max(df$max_ma)
+min(df$min_ma)
 #-------------------------------------------------------------------------------
 
-unique(df_s$early_interval)
-unique(df_s$late_interval)
+unique(df$early_interval)
+unique(df$late_interval)
 
 
-#df_s <- df_s %>% filter(early_interval == 'Kimmeridgian' | late_interval == 'Kimmeridgian')
+#df <- df %>% filter(early_interval == 'Kimmeridgian' | late_interval == 'Kimmeridgian')
 
-max(df_s$max_ma)
-min(df_s$min_ma)
+max(df$max_ma)
+min(df$min_ma)
 
-df_s <- df_s[df_s$max_ma <= 156 & df_s$min_ma >= 148,]
+df <- df[df$max_ma <= 73 & df$min_ma >= 66,]
 
-sort(table(df_s$accepted_name))
+df <- df %>% filter(accepted_rank == 'species')
 
+sort(table(df$accepted_name))
+sort(table(df$accepted_rank))
 
 #-------------------------------------------------------------------------------
 # Global 150 Ma reconstruction of the five target dinosaur genera
@@ -60,7 +68,7 @@ target_genera <- c("Camarasaurus", "Allosaurus", "Apatosaurus", "Diplodocus", "S
 
 # accepted_name is mostly a species name (for example, "Allosaurus fragilis").
 # Extract its first word so all species assigned to a target genus are retained.
-dino_records <- df_s %>%
+dino_records <- df %>%
   mutate(genus = stringr::word(accepted_name, 1)) %>%
   filter(genus %in% target_genera) %>%
   filter(!is.na(lng), !is.na(lat)) %>%
@@ -75,8 +83,14 @@ message("Unique fossil localities supplied to GPlates:")
 print(dino_records %>% count(genus, name = "n_localities"))
 
 
-gmst <- chronosphere::fetch(src = "paleomap", ser = "gmst", ver = "scotese02a_v21321")
-pc <- chronosphere::fetch(src = "paleomap", ser = "paleocoastlines", ver = "7")
+#gmst <- chronosphere::fetch(src = "paleomap", ser = "gmst", ver = "scotese02a_v21321")
+#pc <- chronosphere::fetch(src = "paleomap", ser = "paleocoastlines", ver = "7")
+
+saveRDS(gmst, "paleomap_gmst_scotese02a_v21321.rds")
+saveRDS(pc, "paleomap_paleocoastlines_v7.rds")
+
+gmst <- readRDS("paleomap_gmst_scotese02a_v21321.rds")
+pc <- readRDS("paleomap_paleocoastlines_v7.rds")
 
 # Reconstruct each genus separately so its identity remains attached to the
 # paleocoordinates returned by rgplates::reconstruct(). Do not use the PBDB
@@ -118,8 +132,12 @@ print(dino_uuid)
 #attribution_text <- capture.output(rphylopic::get_attribution(uuid = unname(dino_uuid), text = TRUE, permalink = TRUE))
 #writeLines(attribution_text, attribution_file)
 
-# Fixed styling keeps points, labels, connectors, and silhouettes linked by color.
-taxon_col <- c(Camarasaurus = "#0072B2", Allosaurus = "#D55E00", Apatosaurus = "#009E73", Diplodocus = "#CC79A7", Stegosaurus = "#E69F00")
+# Fixed styling keeps points, labels, and silhouettes linked by color.
+mako_colors <- viridis::viridis_pal(option = "mako")(6)
+scales::show_col(mako_colors)
+
+
+taxon_col <- c(Camarasaurus = "#0B0405FF", Allosaurus = "#3E356BFF", Apatosaurus = "#357BA2FF", Diplodocus = "#49C1ADFF", Stegosaurus = "#DEF5E5FF")
 taxon_shape <- setNames(c(16, 17, 15, 18, 8), target_genera)
 temp_col <- colorRampPalette(c("#33358A", "#76ACCE", "#FFF99A", "#E22C28", "#690720"))
 dino_images <- purrr::map2(dino_uuid, unname(taxon_col[names(dino_uuid)]), ~ rphylopic::recolor_phylopic(rphylopic::get_phylopic(.x), fill = .y))
@@ -153,31 +171,115 @@ temp_df <- as.data.frame(temp_crop, xy = TRUE, na.rm = TRUE)
 names(temp_df)[3] <- "temperature"
 coast_crop <- suppressWarnings(sf::st_crop(moll_coast, plot_bbox))
 
-# Use the median projected position of each genus as the automatic connector
-# target. Median positions are less sensitive than centroids to isolated points.
-anchor_df <- point_df %>% group_by(genus) %>% summarise(anchor_x = median(x), anchor_y = median(y), .groups = "drop")
-
-# Place the icons automatically in evenly spaced slots across the top of the
-# calculated extent. No map coordinates or arrow endpoints are hand-entered.
-icon_df <- tibble(genus = target_genera, icon_x = seq(x_limits[1] + 0.09 * map_width, x_limits[2] - 0.09 * map_width, length.out = length(target_genera)), icon_y = y_limits[2] - 0.07 * map_height, label_y = y_limits[2] - 0.145 * map_height, connector_y = y_limits[2] - 0.18 * map_height) %>% left_join(anchor_df, by = "genus") %>% mutate(img = dino_images[genus])
+# Stack the icon/name pairs vertically inside the left side of the map.
+icon_df <- tibble(
+  genus = target_genera,
+  icon_x = x_limits[1] + 0.12 * map_width,
+  icon_y = seq(
+    y_limits[2] - 0.10 * map_height,
+    y_limits[1] + 0.14 * map_height,
+    length.out = length(target_genera)
+  )
+) %>%
+  mutate(
+    label_y = icon_y - 0.055 * map_height,
+    img = dino_images[genus]
+  )
 
 plot_file <- "kimmeridgian_dinosaurs_150Ma_North_America.png"
 
 p <- ggplot() +
-  geom_raster(data = temp_df, aes(x = x, y = y, fill = temperature)) +
-  geom_sf(data = coast_crop, fill = "#00000030", color = "#55555580", linewidth = 0.25) +
-  geom_segment(data = icon_df, aes(x = icon_x, y = connector_y, xend = anchor_x, yend = anchor_y, color = genus), linewidth = 0.55, alpha = 0.8, arrow = grid::arrow(length = grid::unit(0.11, "inches"), type = "closed")) +
-  geom_point(data = point_df, aes(x = x, y = y, color = genus, shape = genus), size = 3, alpha = 0.85, position = position_jitter(width = 30000, height = 30000, seed = 42)) +
-  rphylopic::geom_phylopic(data = icon_df, aes(x = icon_x, y = icon_y, img = img), height = 0.06 * map_height, color = "transparent", fill = "original", inherit.aes = FALSE) +
-  geom_label(data = icon_df, aes(x = icon_x, y = label_y, label = genus, color = genus), fill = scales::alpha("white", 0.78), linewidth = 0.15, label.padding = grid::unit(0.12, "lines"), fontface = "bold", size = 3.5, show.legend = FALSE) +
-  scale_fill_gradientn(colors = temp_col(230), limits = c(-15, 37), oob = scales::squish, name = "Annual average air surface temperature (degrees C)") +
+  geom_raster(
+    data = temp_df,
+    aes(x = x, y = y, fill = temperature)
+  ) +
+  geom_sf(
+    data = coast_crop,
+    fill = "#00000030",
+    color = "#55555580",
+    linewidth = 0.25
+  ) +
+  geom_point(
+    data = point_df,
+    aes(x = x, y = y, color = genus),
+    size = 1,
+    alpha = 0.85,
+    position = position_jitter(
+      width = 30000,
+      height = 30000,
+      seed = 42
+    )
+  ) +
+  rphylopic::geom_phylopic(
+    data = icon_df,
+    aes(x = icon_x, y = icon_y, img = img),
+    height = 0.06 * map_height,
+    color = "transparent",
+    fill = "original",
+    inherit.aes = FALSE
+  ) +
+  geom_text(
+    data = icon_df,
+    aes(x = icon_x, y = label_y, label = genus, color = genus),
+    fontface = "bold",
+    size = 3.5,
+    show.legend = FALSE
+  ) +
+  scale_fill_gradientn(
+    colors = temp_col(230),
+    limits = c(-15, 37),
+    oob = scales::squish,
+    name = "Annual average air surface temperature (degrees C)"
+  ) +
   scale_color_manual(values = taxon_col, guide = "none") +
-  scale_shape_manual(values = taxon_shape, guide = "none") +
-  coord_sf(crs = sf::st_crs(dino_points), xlim = x_limits, ylim = y_limits, expand = FALSE, datum = NA) +
-  guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5, barwidth = grid::unit(10, "cm"), barheight = grid::unit(0.35, "cm"))) +
-  labs(title = "Kimmeridgian dinosaurs in reconstructed North America", subtitle = paste0("PALEOMAP remote reconstruction at ", age, " Ma | ", nrow(dino_points), " fossil localities"), caption = "Local fossil data: wusa_dino.csv | Silhouettes: PhyloPic") +
+  #scale_shape_manual(values = taxon_shape, guide = "none") +
+  coord_sf(
+    crs = sf::st_crs(dino_points),
+    xlim = x_limits,
+    ylim = y_limits,
+    expand = FALSE,
+    datum = NA
+  ) +
+  guides(
+    fill = guide_colorbar(
+      title.position = "top",
+      title.hjust = 0.5,
+      barwidth = grid::unit(10, "cm"),
+      barheight = grid::unit(0.35, "cm")
+    )
+  ) +
+  labs(
+    title = "Kimmeridgian dinosaurs in reconstructed North America",
+    subtitle = paste0(
+      "PALEOMAP remote reconstruction at ", age,
+      " Ma | ", nrow(dino_points), " fossil localities"
+    ),
+    #caption = "Local fossil data: wusa_dino.csv | Silhouettes: PhyloPic"
+  ) +
   theme_void(base_size = 12) +
-  theme(plot.title = element_text(face = "bold", size = 15, hjust = 0.5), plot.subtitle = element_text(size = 11, hjust = 0.5, margin = margin(b = 3)), plot.caption = element_text(size = 8, color = "gray35", hjust = 1, margin = margin(t = 6)), legend.position = "bottom", legend.title = element_text(size = 9), legend.text = element_text(size = 8), plot.margin = margin(10, 12, 8, 12))
+  theme(
+    plot.title = element_text(
+      face = "bold",
+      size = 15,
+      hjust = 0.5,
+      margin = margin(b = 5)
+    ),
+    plot.subtitle = element_text(
+      size = 11,
+      hjust = 0.5,
+      margin = margin(b = 3)
+    ),
+    plot.caption = element_text(
+      size = 8,
+      color = "gray35",
+      hjust = 1,
+      margin = margin(t = 6)
+    ),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    plot.margin = margin(10, 12, 8, 12)
+  )
 
 p
 

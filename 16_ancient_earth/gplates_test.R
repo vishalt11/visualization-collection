@@ -9,19 +9,19 @@ library(png)
 
 
 
-#coastlines <- reconstruct("coastlines", age=65, model="MERDITH2021")
+coastlines <- reconstruct("coastlines", age=69, model="CAO2024")
 
 # the edge of the map (for mollweide)
-#edge <- mapedge()
+edge <- mapedge()
 
 # transform to Robinson 
-#epsg <- "ESRI:54030"
-#coastsRob <- sf::st_transform(coastlines, crs=epsg)
-#edgeRob <- sf::st_transform(edge, crs=epsg)
+epsg <- "ESRI:54030"
+coastsRob <- sf::st_transform(coastlines, crs=epsg)
+edgeRob <- sf::st_transform(edge, crs=epsg)
 
 # plot
-#plot(edgeRob, col="#1A6BB0", border="gray30")
-#plot(coastsRob, border=NA, col="gray90", add=TRUE)
+plot(edgeRob, col="#1A6BB0", border="gray30")
+plot(coastsRob, border=NA, col="gray90", add=TRUE)
 
 
 df <- read_csv(

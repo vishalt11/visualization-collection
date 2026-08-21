@@ -25,7 +25,7 @@ library(png)
 
 
 df <- read_csv(
-  "maas_worldwide_ornith.csv",
+  "data/maas_worldwide_ornith.csv",
   col_select = c(
     accepted_name, accepted_rank, early_interval, late_interval, max_ma,
     min_ma, lng, lat, cc, state,
@@ -100,10 +100,29 @@ paleocoords <- fossil_records %>%
   purrr::imap_dfr(~ reconstruct_one_family(.x, .y, age = age)) %>%
   mutate(family = factor(family, levels = target_families))
 
+failed_reconstructions <- sum(!is.finite(paleocoords$paleolong) | !is.finite(paleocoords$paleolat))
+if (failed_reconstructions > 0) warning(failed_reconstructions, " fossil localities could not be reconstructed and were omitted.")
+
+paleocoords <- paleocoords %>%
+  filter(is.finite(paleolong), is.finite(paleolat))
+
+
+# Orthographic view settings ---------------------------------------------
+
+view_lon <- -60
+view_lat <- 30
+image_size <- 1800
+
+ortho_crs <- paste0(
+  "+proj=ortho +lon_0=", view_lon,
+  " +lat_0=", view_lat,
+  " +datum=WGS84 +units=m +no_defs"
+)
+
 
 # Fetch and prepare the RGB PaleoAtlas image ------------------------------
 
-atlas_cache <- "chronosphere_cache"
+atlas_cache <- "data/chronosphere_cache"
 dir.create(atlas_cache, showWarnings = FALSE)
 
 paleoatlas <- chronosphere::fetch(
@@ -128,21 +147,71 @@ if (terra::nlyr(atlas_age) < 3) stop("The selected PaleoAtlas slice does not con
 
 atlas_age <- atlas_age[[1:3]]
 atlas_age <- terra::flip(atlas_age, direction = "vertical")
-terra::RGB(atlas_age) <- 1:3
-atlas_extent <- terra::ext(atlas_age)
+terra::crs(atlas_age) <- "EPSG:4326"
 
-# The archive image has reversed rows inside the georeferenced SpatRaster.
-# Export the corrected SpatRaster as one north-up RGB image.
-atlas_png <- file.path(atlas_cache, paste0("paleoatlas_rgb_north_up_", age, "Ma.png"))
+earth_radius <- 6371000
 
-if (!file.exists(atlas_png)) {
-  terra::writeRaster(
-    atlas_age, atlas_png, filetype = "PNG",
-    datatype = "INT1U", overwrite = TRUE
-  )
+ortho_template <- terra::rast(
+  nrows = image_size, ncols = image_size,
+  xmin = -earth_radius, xmax = earth_radius,
+  ymin = -earth_radius, ymax = earth_radius,
+  crs = ortho_crs
+)
+
+atlas_ortho <- terra::project(
+  atlas_age, ortho_template,
+  method = "bilinear", mask = FALSE
+)
+
+valid_cells <- terra::global(!is.na(atlas_ortho[[1]]), "sum", na.rm = TRUE)[1, 1]
+if (valid_cells < 0.5 * terra::ncell(atlas_ortho)) {
+  stop("The orthographic projection contains too few valid cells: ", valid_cells)
 }
 
+valid_globe <- !is.na(atlas_ortho[[1]])
+atlas_rgb <- terra::ifel(is.na(atlas_ortho), 0, atlas_ortho)
+atlas_rgba <- c(atlas_rgb, terra::ifel(valid_globe, 255, 0))
+terra::RGB(atlas_rgba) <- 1:4
+atlas_extent <- terra::ext(atlas_ortho)
+
+# Export a transparent RGBA globe for efficient use in ggplot.
+atlas_png <- file.path(
+  atlas_cache,
+  paste0("paleoatlas_ortho_rgba_", age, "Ma_lon", view_lon, "_lat", view_lat, ".png")
+)
+
+terra::writeRaster(
+  atlas_rgba, atlas_png, filetype = "PNG",
+  datatype = "INT1U", overwrite = TRUE
+)
+
 atlas_image <- png::readPNG(atlas_png, native = TRUE)
+
+
+# Keep and project only points on the visible hemisphere -----------------
+
+is_visible_ortho <- function(lon, lat, lon_0, lat_0) {
+  lon <- lon * pi / 180
+  lat <- lat * pi / 180
+  lon_0 <- lon_0 * pi / 180
+  lat_0 <- lat_0 * pi / 180
+
+  sin(lat_0) * sin(lat) + cos(lat_0) * cos(lat) * cos(lon - lon_0) >= 0
+}
+
+paleocoords_visible <- paleocoords %>%
+  filter(is_visible_ortho(paleolong, paleolat, view_lon, view_lat))
+
+dino_points <- paleocoords_visible %>%
+  sf::st_as_sf(coords = c("paleolong", "paleolat"), crs = 4326, remove = FALSE) %>%
+  sf::st_transform(crs = ortho_crs)
+
+point_coordinates <- sf::st_coordinates(dino_points)
+
+point_df <- bind_cols(
+  sf::st_drop_geometry(dino_points),
+  tibble(x = point_coordinates[, 1], y = point_coordinates[, 2])
+)
 
 # Fetch and color one PhyloPic silhouette per family ---------------------
 
@@ -173,6 +242,7 @@ names(family_images) <- target_families
 
 map_width <- atlas_extent$xmax - atlas_extent$xmin
 map_height <- atlas_extent$ymax - atlas_extent$ymin
+icon_height <- 0.05 * map_height
 
 icon_df <- tibble(
   family = factor(target_families, levels = target_families),
@@ -194,34 +264,34 @@ p <- ggplot() +
     ymin = atlas_extent$ymin, ymax = atlas_extent$ymax, interpolate = TRUE
   ) +
   geom_point(
-    data = paleocoords, aes(x = paleolong, y = paleolat, fill = family),
+    data = point_df, aes(x = x, y = y, fill = family),
     shape = 21, 
     color = "firebrick2", 
     stroke = NA, 
     size = 1, 
     alpha = 0.75,
-    position = position_jitter(width = 0.35, height = 0.35, seed = 42)
+    position = position_jitter(width = 25000, height = 25000, seed = 42)
   ) +
   rphylopic::geom_phylopic(
     data = icon_df, aes(x = icon_x, y = icon_y, img = img),
-    height = 12, color = "transparent", fill = "original",
+    height = icon_height, color = "transparent", fill = "original",
     inherit.aes = FALSE
   ) +
   geom_text(
     data = icon_df, aes(x = label_x, y = label_y, label = family, color = family),
-    hjust = 0.5, fontface = "bold", size = 3.5,
+    hjust = 0.5, fontface = "bold", size = 2.5,
     show.legend = FALSE
   ) +
   scale_color_manual(values = family_colors, guide = "none", drop = FALSE) +
   scale_fill_manual(values = family_colors, guide = "none", drop = FALSE) +
-  coord_sf(
+  coord_equal(
     xlim = c(atlas_extent$xmin, atlas_extent$xmax),
     ylim = c(atlas_extent$ymin, atlas_extent$ymax),
-    expand = FALSE, datum = NA, clip = "off"
+    expand = FALSE, clip = "off"
   ) +
   labs(
     title = "Maastrichtian Ornithischian Families",
-    subtitle = paste0("PALEOMAP PaleoAtlas v3 at ", age, " Ma | ", nrow(paleocoords), " fossil sites"),
+    subtitle = paste0("PALEOMAP PaleoAtlas v3 at ", age, " Ma | ", nrow(point_df), " visible fossil sites"),
     #caption = "Local fossil data: maas_worldwide_ornith.csv | Basemap: PALEOMAP PaleoAtlas v3 | Silhouettes: PhyloPic"
   ) +
   theme_void(base_size = 12) +
@@ -235,9 +305,9 @@ p <- ggplot() +
 p
 
 ggsave(
-  "paleoatlas_ornithischian_families_70Ma.png", p,
+  "paleoatlas_ornithischian_families_70Ma_orthographic_NA.png", p,
   width = 14, height = 7.5, units = "in", dpi = 600,
-  bg = "grey70"
+  bg = "grey60"
 )
 
 

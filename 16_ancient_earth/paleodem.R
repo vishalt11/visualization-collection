@@ -7,10 +7,34 @@ library(via)
 library(png)
 
 
+# Local fonts -------------------------------------------------------------
+
+font_dir <- if (dir.exists("OTF")) "OTF" else file.path("..", "OTF")
+if (!dir.exists(font_dir)) stop("Could not find the OTF font directory.")
+
+sysfonts::font_add(
+  family = "Sentient-BoldItalic",
+  regular = file.path(font_dir, "Sentient-BoldItalic.otf")
+)
+
+sysfonts::font_add(
+  family = "Sentient-Regular",
+  regular = file.path(font_dir, "Sentient-Regular.otf")
+)
+
+sysfonts::font_add(
+  family = "RobotoCondensed-ExtraLightItalic",
+  regular = file.path(font_dir, "RobotoCondensed-ExtraLightItalic.ttf")
+)
+
+showtext::showtext_auto()
+showtext::showtext_opts(dpi = 600)
+
+
 # Fossil data -------------------------------------------------------------
 
 df <- read_csv(
-  "maas_worldwide_ornith.csv",
+  "data/maas_worldwide_ornith.csv",
   col_select = c(
     accepted_name, accepted_rank, early_interval, late_interval, max_ma,
     min_ma, lng, lat, cc, state,
@@ -19,8 +43,7 @@ df <- read_csv(
   )
 )
 
-df <- df %>%
-  filter(max_ma <= 73, min_ma >= 66, accepted_rank == "family")
+df <- df %>% dplyr::filter(max_ma <= 73, min_ma >= 66, accepted_rank == "family")
 
 age <- 70
 
@@ -30,8 +53,8 @@ target_families <- c(
 )
 
 mako_colors <- c(
-  "#0C1F4B", "#B10DC9", "#85144B",
-  "#FF4136", "#FF851B", "#F0E442"
+  "#C3A6F8", "#91C9CB", "#85144B",
+  "#FF4136", "#fa9b4b", "#F0E442"
 )
 
 family_colors <- setNames(mako_colors, target_families)
@@ -69,7 +92,7 @@ paleocoords <- paleocoords %>%
 
 # Fetch and project the PALEOMAP paleoDEM --------------------------------
 
-dem_cache <- "chronosphere_dem_cache"
+dem_cache <- "data/chronosphere_dem_cache"
 dir.create(dem_cache, showWarnings = FALSE)
 
 paleodems <- chronosphere::fetch(
@@ -114,15 +137,33 @@ hillshade <- terra::project(
 hillshade_soft_water <- 0.5 + (hillshade - 0.5) * 0.65
 hillshade_display <- terra::ifel(dem_moll < 0, hillshade_soft_water, hillshade)
 
-terrain_breaks <- c(
-  -12000, -6000, -4000, -2500, -1000, -200, 0,
-  200, 800, 1600, 3000, 6000, 12000
-)
+subdivide_breaks <- function(anchors, classes_per_interval = 3) {
+  pieces <- purrr::map2(
+    head(anchors, -1), tail(anchors, -1),
+    ~ seq(.x, .y, length.out = classes_per_interval + 1)[-1]
+  )
 
-terrain_colors <- c(
-  "#06162F", "#09284A", "#0E4168", "#176386", "#2D8EAA", "#86C8D2",
-  "#2F7355", "#68A05B", "#A7B565", "#C5A66A", "#9A6847", "#F0E8D5"
-)
+  c(anchors[1], unlist(pieces, use.names = FALSE))
+}
+
+water_anchors <- c(-12000, -6000, -4000, -2500, -1000, -200, 0)
+land_anchors <- c(0, 200, 800, 1600, 3000, 6000, 12000)
+
+water_breaks <- subdivide_breaks(water_anchors)
+land_breaks <- subdivide_breaks(land_anchors)
+terrain_breaks <- c(water_breaks, land_breaks[-1])
+
+water_colors <- grDevices::colorRampPalette(
+  c("#06162F", "#0E4168", "#2D8EAA", "#A9E0E4"),
+  space = "Lab"
+)(36)
+
+land_colors <- grDevices::colorRampPalette(
+  c("#285D45", "#6E9D55", "#A9B865", "#C5A66A", "#936447", "#F0E8D5"),
+  space = "Lab"
+)(36)
+
+terrain_colors <- c(water_colors, land_colors)
 
 shade_colors <- grDevices::colorRampPalette(
   c("#00000099", "#00000000", "#FFFFFF26"),
@@ -132,7 +173,7 @@ shade_colors <- grDevices::colorRampPalette(
 
 # Render the projected relief once for efficient use in ggplot -----------
 
-relief_png <- file.path(dem_cache, paste0("paleodem_hillshade_mollweide_", age, "Ma.png"))
+relief_png <- file.path(dem_cache, paste0("paleodem_hillshade_72class_mollweide_", age, "Ma.png"))
 
 render_relief <- function(filename, dem, shade) {
   grDevices::png(filename, width = 3600, height = 1800, bg = "transparent")
@@ -201,7 +242,7 @@ names(family_images) <- target_families
 
 map_width <- dem_extent$xmax - dem_extent$xmin
 map_height <- dem_extent$ymax - dem_extent$ymin
-icon_height <- 0.05 * map_height
+icon_height <- 0.08 * map_height
 
 icon_df <- tibble(
   family = factor(target_families, levels = target_families),
@@ -225,8 +266,8 @@ p <- ggplot() +
   ) +
   geom_point(
     data = point_df, aes(x = x, y = y, fill = family),
-    shape = 21, color = "firebrick2", size = 1.2,
-    stroke = 0.3, alpha = 0.85,
+    shape = 21, color = "firebrick2", size = 1.6,
+    stroke = 0.2, alpha = 0.85,
     position = position_jitter(width = 30000, height = 30000, seed = 42)
   ) +
   rphylopic::geom_phylopic(
@@ -248,15 +289,24 @@ p <- ggplot() +
     expand = FALSE, datum = NA, clip = "off"
   ) +
   labs(
-    title = "Maastrichtian Ornithischian Families",
-    subtitle = paste0("PALEOMAP paleoDEM hillshade at ", age, " Ma | ", nrow(point_df), " fossil sites"),
-    #caption = "Local fossils: maas_worldwide_ornith.csv | Terrain and bathymetry: PALEOMAP paleoDEM v24221 | Silhouettes: PhyloPic"
+    title = "<span style='color:#F2F89A'>Maastrichtian</span> Ornithischian Families",
+    subtitle = paste0("paleoDEM hillshade at ", age, " Ma | ", nrow(point_df), " fossil sites"),
+    caption = "Terrain and bathymetry: PALEOMAP paleoDEM v24221 | Silhouettes: PhyloPic"
   ) +
   theme_void(base_size = 12) +
   theme(
-    plot.title = element_text(face = "bold", size = 18, hjust = 0.5),
-    plot.subtitle = element_text(size = 11, hjust = 0.5, margin = margin(t = 4, b = 76)),
-    plot.caption = element_text(size = 8, color = "gray35", hjust = 1, margin = margin(t = 6)),
+    plot.title = ggtext::element_markdown(
+      family = "Sentient-BoldItalic", color = "grey70",
+      size = 20, hjust = 0.5
+    ),
+    plot.subtitle = element_text(
+      family = "Sentient-Regular", color = "grey60",
+      size = 16, hjust = 0.5, margin = margin(t = 4, b = 76)
+    ),
+    plot.caption = element_text(
+      family = "RobotoCondensed-ExtraLightItalic", color = "grey45",
+      size = 10, hjust = 1, margin = margin(t = 6)
+    ),
     plot.margin = margin(10, 12, 8, 12)
   )
 
@@ -265,5 +315,11 @@ p
 ggsave(
   "paleodem_ornithischian_families_70Ma.png", p,
   width = 14, height = 8, units = "in", dpi = 600,
-  bg = "white"
+  bg = "#171717"
+)
+
+ggsave(
+  "paleodem_ornithischian_families_70Ma.pdf", p,
+  width = 14, height = 8, units = "in",
+  device = cairo_pdf, bg = "#171717"
 )

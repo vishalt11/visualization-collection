@@ -307,7 +307,7 @@ p
 ggsave(
   "paleoatlas_ornithischian_families_70Ma_orthographic_NA.png", p,
   width = 14, height = 7.5, units = "in", dpi = 600,
-  bg = "grey60"
+  bg = "grey80"
 )
 
 

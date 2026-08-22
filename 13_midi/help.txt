@@ -1,0 +1,94 @@
+
+
+deactivate
+
+basic-pitch --save-midi --save-note-events --save-model-outputs .\out .\furelise.mp3
+basic-pitch --save-midi .\out .\furelise.mp3
+
+
+python -m demucs .\thronebreaker_clipped.mp3
+
+
+yt-dlp -x --audio-format mp3 https://www.youtube.com/watch?v=tOpdCxy7N5M
+yt-dlp -f "bestvideo[height<=2160]+bestaudio/best[height<=2160]" https://www.youtube.com/watch?v=m5VHETDtQ_M
+
+pip install yt-dlp  
+
+pip list
+
+#custom python venvs
+py -3.11 -m venv .venv311_v1  
+py -3.14 -m venv .venv314  
+
+
+Get-Command ffmpeg | Format-List
+(Get-Command ffmpeg).Source
+
+
+winget uninstall -e --id Gyan.FFmpeg
+
+winget install -e --id Gyan.FFmpeg.Shared
+	 
+
+https://www.youtube.com/watch?v=eb3kAUQxinQ&list=RDmZnUYsqw8BA&index=13
+https://www.youtube.com/watch?v=Zxo_MYrADmY&list=RDZxo_MYrADmY&index=1
+
+https://www.youtube.com/watch?v=5GIrp4M664I&list=RD_iTvU_WtT28&index=26
+
+
+the north water
+Nosferatu (2024 film)
+Platoon movie
+Zoolander
+
+My biggest tips for maintainability and scalability are:
+
+    Separate I/O from logic, and use dependency injection. I like to load all my data into duckdb tables up front, and then pass the DuckDBPyConenction object to my pipeline functions, which are pure logic. This helps keep the pipeline functions easily testable. In my case it also helps avoid unnecessary networking - I often have to run several queries against the same few mysql or postgres tables, and it is dramatically faster to load the needed segments of those tables into duckdb with simple queries, and then do all the interesting joins and such in memory.
+
+    Use complete type annotations and write docstrings for every function. If an argument is an opaque data container like a dataframe, include the expected columns in the docstring. And when returning a dataframe, also include the column list. It should be easy to look at a function and know exactly what's coming in and what's going out.
+
+    I like to set up pipelines as a sequence of functions with the same signature via a protocol or decorator. For example a pattern I use often is to have every pipeline step accept 3 arguments - the dataframe, a pandera schema, and the duckdb instance. Then the pipeline function will modify the dataframe somehow (usually using data from duckdb, but not always - I will still pass it to functions that don't use it so that every piepline function has the same signature), modify the pandera schema accordingly, and then return them as a tuple. Then my orchestration function can simply iterate over the list (or registry) of pipeline functions, pass the same arguments every time, and validate the dataframe against the pandera schema inbetween each step.
+
+    Use module structure, and try to keep your layers of abstraction clean. By that I mean, the only .py files that should be at the repo/proejct root are scripts you actually run - maybe a single entrypoint, maybe a few scripts for different things. But these scripts only have a main() function and a parse_args() function, plus maybe some small helper functions that are spesific to that script. All the other code lives in the src/ folder and is imported by those scripts.
+
+    Use proper retry/timeout logic for I/O operations, and proper error handling. Always have checks for things like empty responses from API calls or queries. For API calls I always make a pydantic model of the response structure, and add a .get classmethod which hits the endpoint and returns the validated pydantic model instance.
+
+    Use a linter, formatter and type checker. I'm a big fan of ruff+ty. This goes a long way towards keeping the code readable and avoiding dumb mistakes. And be aware that these things are highly customizable. You shouldn't fight your linter, it should help you adhere to the style and patterns that you decide.
+
+    Write tests! Once you're certain a pipeline step or some other function is doing what it should, write tests (with pytest) that assert that behavior. And set up CI and/or pre-commit hooks that run the tests, so you can't commit code that breaks them. Any time you fix a bug, add a regression test to make sure it stays fixed. This is one of the better ways to use AI, but you do still need to babysit it. LLMs have a tendency to create new fixtures and helpers for each test file when they really should be shared by multiple tests.
+    
+    Use descriptive variable names, even if they end up long and line length limits make you use a bunch more line breaks. There is one school of thought that says "never abbreviate anything, ever" and I get pretty close to that. The only abbreviations I use are df and a few very common abbreviations that are specific to my industry. This is especially important with math-y stuff where it's tempting to use math-y variable names. Forcing yourself to use descriptive names when you're implementing something mathy like a NLL calculation is a great way to make sure your understanding is solid.
+
+    Related to descriptive variable names, and use as few comments as possible. The code says what it does, so the comments don't need to. With exceptions being the occasional section heading, when you have 5-10 lines implementing one idea, but it's not obvious from looking at them. Most comments should be explaining *why* you're doing something, not what you're doing.
+    Learn general software engineering / python best practicies, which aren't specific to data work. SOLID principles, how and when to use OOP vs a functional style, testing, documentation, design patterns. I really like the youtuber ArjanCodes for this.
+    Use uv and pyproject.toml. It's 2026 for god's sake, we don't have to subject ourselves to pip and requirements.txt anymore.
+
+
+Journal Paper tips:
+
+
+    dont mention rqs/rq1 rq2 anywhere other than in the rq section, just refer to rq concept instead of a hard numbering like rq1/
+
+    lit review 16 ref
+    intro 10 references
+    dataset has 2-3 references
+
+    25+ references
+
+    max 40, min 25
+
+
+    figma, drawio, canva
+
+    skip implementation and reproducibility from journal paper
+    dont put dataset in the end
+
+
+    subheadings in discussions?
+
+    single paragraphs in discussions
+
+    too many limitations?
+    
+
+    

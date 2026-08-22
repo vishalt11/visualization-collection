@@ -9,7 +9,7 @@ library(png)
 
 # Local fonts -------------------------------------------------------------
 
-font_dir <- if (dir.exists("OTF")) "OTF" else file.path("..", "OTF")
+font_dir <- "../data/OTF/"
 if (!dir.exists(font_dir)) stop("Could not find the OTF font directory.")
 
 sysfonts::font_add(
@@ -90,6 +90,8 @@ paleocoords <- paleocoords %>%
   filter(is.finite(paleolong), is.finite(paleolat))
 
 
+saveRDS(paleocoords, "data/paleocoords_70Ma.rds")
+saveRDS(paleocoords, "data/paleocoords_70Ma.rds")
 # Fetch and project the PALEOMAP paleoDEM --------------------------------
 
 dem_cache <- "data/chronosphere_dem_cache"
@@ -110,6 +112,9 @@ moll_crs <- paste(
   "+proj=moll +lon_0=0 +datum=WGS84",
   "+units=m +no_defs"
 )
+
+
+terra::global(dem_age, c("min", "max"), na.rm = TRUE)
 
 # Terrain hillshade -------------------------------------------------------
 
